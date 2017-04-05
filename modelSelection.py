@@ -10,10 +10,20 @@ def main(argv):
 		print("The arguements for this script require(if there is a space in the name of a parameter please replace the space with a +):\npath/to/filename of the dataset\nsupervised/unsupervised\nclassifier/regression/clustering\nparameter trying to be guessed\nother parameters")
 	else:
 		args = argv[1:]
+		
+		#sets up the RDD
 		dataset = sc.textFile(args[0])
+		if(args[-3:] == "csv"):
+			import csv
+			dataset = dataset.mapPartitions(lambda x: csv.reader(x))
+
+		elif(args[-4:] =="json"):
+			import json
+			dataset = dataset.map(json.loads)
+		
+		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if(args[1] == "supervised"):
 			if(args[2] == "classification"):
-				#code goes here to find model selection for classification
 				if(count(dataset) > 100000):
 					text = ""
 					while(text !="y" or text !="n"):
@@ -24,7 +34,6 @@ def main(argv):
 						return "KNeighbors Classifier and if that doesnt work then SVC or Ensemble Classifiers"
 
 			if(args[2] == "regression"):
-				#code goes here to find model selection for regression
 				if(count(dataset) > 100000):
 					if (len(args) < 6):
 						return "Lasso"
