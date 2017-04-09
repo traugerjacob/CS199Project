@@ -21,6 +21,9 @@ def performLatentDirichletAllocation():
 def performKMeans():
 	return None
 
+def performGaussianMixture():
+	return None
+
 def main(argv):
 		#This is a lot of parameters needed for the model selection process. If there are any that can be removed talk to partner about it to see if it can be done
 	if len(argv) < 5:
@@ -28,8 +31,8 @@ def main(argv):
 		print("The arguements for this script require(replace sapce in parameters with a '+'):\n" +
 				"path/to/filename of the dataset\n" +
 				"supervised/unsupervised\n" +
-				"classifier/regression/clustering\n"
-				"parameter trying to be guessed\n"
+				"classifier/regression/clustering\n" +
+				"parameter trying to be guessed\n" +
 				"other parameters\n")
 	else:
 		args = argv[1:]
@@ -52,13 +55,15 @@ def main(argv):
 					while(text != "y" or text != "n"):
 						text = input("Text data? y/n")
 					if(text = "y"):
-						return "Naive Bayes"
+						performNaiveBayes()
+						return
 					else:
 						return "KNeighbors Classifier and if that doesnt work then SVC or Ensemble Classifiers"
 
 			if(args[2] == "regression"):
 				if(count(dataset) > 100000):
 					if (len(args) < 6):
+						performLasso()
 						return "Lasso"
 					else:
 						return "Ridge Regression/SVR and then Ensemble regressors"
@@ -71,9 +76,12 @@ def main(argv):
 				while(text != "y" or text != "n"):
 					text = input("Text data? y/n")
 				if(text = "y")
-					return "Latent Dirichlet Allocation"
-				else:
-					return "KMeans and if that does not work than Guassian Mixture Modeling"
+					performLatentDirichletAllocation()
+					return 
+					else:
+						performKMeans()
+						performGuassianMixture()
+						return "KMeans and if that does not work than Guassian Mixture Modeling"
 			else:
 				print("please use clusetering")
 
