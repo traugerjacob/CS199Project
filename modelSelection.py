@@ -6,7 +6,7 @@ sc = SparkContext(conf = conf)
 
 def checkParams(row):
 	for i in row:
-		if i == None
+		if i == None:
 			return False
 	return True
 
