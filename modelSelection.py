@@ -1,4 +1,4 @@
-#TODO find a way to filter the dataset to only get the parameters we want left in them
+#MIGHT BE FIXED HAS NOT BEEN TESTED TODO find a way to filter the dataset to only get the parameters we want left in them
 #TODO split the dataset into training and testing data (also when finding the best model should we train on a smaller dataset to pick the best model and then use that model on the full dataset?)
 #TODO fill in the stubbed functions for the models
 
@@ -8,18 +8,49 @@ conf = SparkConf().setAppName("Model Selection")
 sc = SparkContext(conf = conf)
 
 
-def checkParams(row, params):
-	for i in row:
-		if i == None or i in params:
-			return False
-	return True
 
 def filtered(data, params):
 	data = data.filter(lambda x: checkParams(x, params))
 	return data
 
+def jsonCheckParams(row, params):
+	for j in params:
+		if(row.get(j) == None):
+			return False
+	return True
+
+def jsonMap(row, params)
+	t = ()
+	for i in params:
+		t = t + (row.get(i),)
+	return t
+
+def jsonFilterAndMap(data, params):
+	data = data.filter(lambda x: jsonCheckParams(x, params))
+	data = data.map(lambda x: jsonMap(x, params))
+	return data
 
 
+
+def csvCheckParams(row, params):
+	for i in row:
+		if i == None or i in params:
+			return False
+	return True
+
+def csvMap(row, params, headerDict):
+	t = ()
+	for i in params:
+		t = t + (row[headerDict[params]],)
+	return t
+
+def csvFilterAndMap(data, params):
+	header = data.first().collect()
+	data = data.filter(lambda x: csvCheckParams(x, params))
+	headerDict = {}
+	for i in range(len(header[0])):
+		headerDict[header[0][i]] = i
+	data = data.map(lambda x: csvMap(x, params, headerDict))
 
 #returns the Naive Bayes model
 def performNaiveBayes(data, params):
@@ -116,18 +147,18 @@ def main(argv):
 
 		#sets up the RDD
 		dataset = sc.textFile(args[0])
+		params = argv[3:]
 		if args[-3:] == "csv":
 			import csv
 			dataset = dataset.mapPartitions(lambda x: csv.reader(x))
+			dataset = csvFilterAndMap(dataset, params)
 
 		elif args[-4:] =="json":
 			import json
 			dataset = dataset.map(json.loads)
-
-		params = argv[3:]
+			dataset = jsonFilterAndMap(dataset, params)
 		
-		#filters dataset to get all None/header values out
-		dataset = filtered(dataset, params)
+		
 		
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
