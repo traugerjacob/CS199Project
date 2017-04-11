@@ -53,22 +53,9 @@ def csvFilterAndMap(data, params):
 	data = data.map(lambda x: csvMap(x, params, headerDict))
 
 #returns the Naive Bayes model
-def performNaiveBayes(data, params):
-
-	# Import essential libraries for NaiveBayes
-	from pyspark.mllib.feature import HashingTF, IDF
-	from pyspark.mllib.regression import LabeledPoint
-	from pyspark.mllib.classification import NaiveBayes
-	from pyspark.mllib.evaluation import MulticlassMetrics
-
-	# Assumes the data is a rdd of key-value pairs where key is being "predicted" and value is the param
-	labels = data.map(lambda x: x[0])
-	tf = HashingTF().transform(labeled_data.map(lambda x: x[1]))
-	idf = IDF(minDocFreq=5).fit(tf)
-	tfidf = idf.transform(tf)
-	zipped_data = (labels.zip(tfidf).map(lambda x: LabeledPoint(x[0], x[1])).cache())
-	training, test = zipped_data.randomSplit([0.75, 0.25])
+def performNaiveBayes(training, test, params):
 	model = NaiveBayes.train(training)
+
 	train_preds = (training.map(lambda x: x.label).zip(model.predict(training.map(lambda x: x.features))))
 	test_preds = (test.map(lambda x: x.label).zip(model.predict(test.map(lambda x: x.features))))
 	trained_metrics = MulticlassMetrics(train_preds.map(lambda x: (x[0], float(x[1]))))
@@ -92,10 +79,14 @@ def performClassification(data, params):
 	from pyspark.mllib.regression import LabeledPoint
 	from pyspark.mllib.classification import NaiveBayes
 	from pyspark.mllib.evaluation import MulticlassMetrics
+	
+	labels = data.map(lambda x: x[0])
+	values = data.map(lambda x: x[1:])
+	zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
+	training, test = zipped_data.randomSplot([.75, .25])
 
-	naiveBayes = performNaiveBayes(data, params)
-	randomForest = performRandomForest(data, params)
-	return None
+	naiveBayes = performNaiveBayes(training, test, params)
+	randomForest = performRandomForest(training, test, params)
 
 
 
