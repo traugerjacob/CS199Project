@@ -8,11 +8,6 @@ conf = SparkConf().setAppName("Model Selection")
 sc = SparkContext(conf = conf)
 
 
-
-def filtered(data, params):
-	data = data.filter(lambda x: checkParams(x, params))
-	return data
-
 def jsonCheckParams(row, params):
 	for j in params:
 		if(row.get(j) == None):
@@ -26,15 +21,16 @@ def jsonMap(row, params)
 	return t
 
 def jsonFilterAndMap(data, params):
+	data = data.map(json.loads)
 	data = data.filter(lambda x: jsonCheckParams(x, params))
 	data = data.map(lambda x: jsonMap(x, params))
 	return data
 
 
 
-def csvCheckParams(row, params):
-	for i in row:
-		if i == None or i in params:
+def csvCheckParams(row, params, headerDict):
+	for i in params:
+		if row[headerDict[params]] == None
 			return False
 	return True
 
@@ -45,11 +41,14 @@ def csvMap(row, params, headerDict):
 	return t
 
 def csvFilterAndMap(data, params):
-	header = data.first().collect()
-	data = data.filter(lambda x: csvCheckParams(x, params))
+	data = data.mapPartitions(lambda x: csv.reader(x))
+	header = data.first()
+	data = data.subtract(header)
+	header = header.collect()
 	headerDict = {}
 	for i in range(len(header[0])):
 		headerDict[header[0][i]] = i
+	data = data.filter(lambda x: csvCheckParams(x, params, headerDict))
 	data = data.map(lambda x: csvMap(x, params, headerDict))
 
 #returns the Naive Bayes model
@@ -166,12 +165,10 @@ def main(argv):
 		params = argv[3:]
 		if args[-3:] == "csv":
 			import csv
-			dataset = dataset.mapPartitions(lambda x: csv.reader(x))
 			dataset = csvFilterAndMap(dataset, params)
 
 		elif args[-4:] =="json":
 			import json
-			dataset = dataset.map(json.loads)
 			dataset = jsonFilterAndMap(dataset, params)
 
 
@@ -192,7 +189,7 @@ def main(argv):
 
 		if args[1] == "unsupervised":
 			if args[2] == "clustering":
-				model = perfromClustering(dataset, params)
+				model = perfromClustering(datasetSmall, params)
 				if(model[0] == "gaussian"):
 					theModel = GuassianMixture.train(datasetTraining, model[1])
 				else:
