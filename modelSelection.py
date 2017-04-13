@@ -27,7 +27,6 @@ def jsonFilterAndMap(data, params):
 	return data
 
 
-
 def csvCheckParams(row, params, headerDict):
 	for i in params:
 		if row[headerDict[params]] == None
@@ -60,16 +59,18 @@ def performNaiveBayes(training, test, params):
 	trained_metrics = MulticlassMetrics(train_preds.map(lambda x: (x[0], float(x[1]))))
 	test_metrics = MulticlassMetrics(test_preds.map(lambda x: (x[0], float(x[1]))))
 
-	# Gets the accuracy of the data (first metric?)
-	output = str(trained_metrics.confusionMatrix().toArray()) + '\n' +
-			 'Training precision: ' + str(trained_metrics.precision()) + '\n' +
-			 str(test_metrics.confusionMatrix().toArray()) + '\n' +
-			 'Testing precision: ' + str(test_metrics.precision()) + '\n'
+	#Gets the accuracy of the data (first metric?)
+	#output = str(trained_metrics.confusionMatrix().toArray()) + '\n' +
+	#		 'Training precision: ' + str(trained_metrics.precision()) + '\n' +
+	#		 str(test_metrics.confusionMatrix().toArray()) + '\n' +
+	#		 'Testing precision: ' + str(test_metrics.precision()) + '\n'
+	#return output
+	return test_metrics.precision()
 
-	return output
 
 #returns the Random Forest model
 def performRandomForest(data, params):
+	#return test_metrics precision for random forest
 	return None
 
 
@@ -78,14 +79,13 @@ def performClassification(data, params):
 	from pyspark.mllib.classification import NaiveBayes
 	from pyspark.mllib.tree import RandomForest, RandomForestModel
 	from pyspark.mllib.evaluation import MulticlassMetrics
-	
+
 	training, test = data.randomSplit([.8, .2])
 
 	naiveBayes = performNaiveBayes(training, test, params)
 	randomForest = performRandomForest(training, test, params)
-	#TODO find out which is the best model and return it
-
-
+	# return the one with the higher testing data accuracy
+	return naiveBayes if naiveBayes>randomForest else randomForest
 
 
 #returns the Lasso model
@@ -108,18 +108,20 @@ def performLinearRegression(training, test):
 #returns the best regression model for the dataset given the parameters
 def performRegression(data, params):
 	from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD
-	
+
 	training, test = data.randomSplit([.8, .2])
 
 	#These should return the error values to test against each other to see which model should be chosen
 	lasso = performLasso(training, test, params)
 	linReg = performLinearRegression(training, test, params)
 	ridgeReg = perfromRidgeRegression(training, test, params)
-	
+
 	#TODO find out which did the best and return it
-	return None
+	lassoValue = something_here
+	linRegValue = linRegValue.summary.rootMeanSquaredError
+	ridgeRegValue = something_here
 
-
+	return min(lassoValue,linRegValue,ridgeRegValue)
 
 
 
@@ -182,15 +184,15 @@ def main(argv):
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
 			from pyspark.mllib.regression import LabeledPoint
-			
+
 			labels = data.map(lambda x: x[0])
 			values = data.map(lambda x: x[1:])
 			zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
 
 			datasetTraining, datasetTest = zipped_data.randomSplit([.75, .25])
-			
+
 			sample = zipped_data.sample(False, .3)
-			
+
 
 			if args[2] == "classification":
 				model = performClassification(sample, params)
