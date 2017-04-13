@@ -75,42 +75,48 @@ def performRandomForest(data, params):
 
 #returns the best model for the data given the parameters
 def performClassification(data, params):
-	from pyspark.mllib.regression import LabeledPoint
 	from pyspark.mllib.classification import NaiveBayes
+	from pyspark.mllib.tree import RandomForest, RandomForestModel
 	from pyspark.mllib.evaluation import MulticlassMetrics
 	
-	labels = data.map(lambda x: x[0])
-	values = data.map(lambda x: x[1:])
-	zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
-	training, test = zipped_data.randomSplot([.75, .25])
+	training, test = data.randomSplit([.8, .2])
 
 	naiveBayes = performNaiveBayes(training, test, params)
 	randomForest = performRandomForest(training, test, params)
-
+	#TODO find out which is the best model and return it
 
 
 
 
 #returns the Lasso model
-def performLasso(data, params):
-	return None
+def performLasso(training, test):
+	model = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
+	return model
 
 
 #returns the Ridge Regression model
-def performRidgeRegression(data, params):
-	return None
-
+def performRidgeRegression(training, test):
+	model = RidgeRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
+	return model
 
 #returns the Linear Regression model
-def performLinearRegression(data, params):
-	return None
+def performLinearRegression(training, test):
+	model = LinearRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
+	return model
 
 
 #returns the best regression model for the dataset given the parameters
 def performRegression(data, params):
-	lasso = performLasso(dataset, params)
-	linReg = performLinearRegression(dataset, params)
-	ridgeReg = perfromRidgeRegression(dataset, params)
+	from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD
+	
+	training, test = data.randomSplit([.8, .2])
+
+	#These should return the error values to test against each other to see which model should be chosen
+	lasso = performLasso(training, test, params)
+	linReg = performLinearRegression(training, test, params)
+	ridgeReg = perfromRidgeRegression(training, test, params)
+	
+	#TODO find out which did the best and return it
 	return None
 
 
@@ -175,12 +181,23 @@ def main(argv):
 
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
+			from pyspark.mllib.regression import LabeledPoint
+			
+			labels = data.map(lambda x: x[0])
+			values = data.map(lambda x: x[1:])
+			zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
+
+			datasetTraining, datasetTest = zipped_data.randomSplit([.75, .25])
+			
+			sample = zipped_data.sample(False, .3)
+			
+
 			if args[2] == "classification":
-				model = performClassification(dataset, params)
+				model = performClassification(sample, params)
 				#TODO predict the model across the entire dataset
 
 			if args[2] == "regression":
-				model = performRegression(dataset, params)
+				model = performRegression(sample, params)
 				#TODO predict the model across the entire dataset
 
 			else:
@@ -189,7 +206,7 @@ def main(argv):
 
 		if args[1] == "unsupervised":
 			if args[2] == "clustering":
-				model = perfromClustering(datasetSmall, params)
+				model = perfromClustering(sample, params)
 				if(model[0] == "gaussian"):
 					theModel = GuassianMixture.train(datasetTraining, model[1])
 				else:
