@@ -194,11 +194,26 @@ def main(argv):
 
 			if args[2] == "classification":
 				model = performClassification(sample, params)
-				#TODO predict the model across the entire dataset
+				
+				if(model == "Naive Bayes"):
+					theModel = NaiveBayes.train(training)
+	
+				else:
+					#TODO implement randomForest
 
 			if args[2] == "regression":
 				model = performRegression(sample, params)
 				#TODO predict the model across the entire dataset
+				if(model == "lasso"):
+					theModel = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
+				
+				elif(model == "linear"):
+					theModel = LinearRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
+				
+				else:
+					theModel = RidgeRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
+
+
 
 			else:
 				print("Please use rather classification or regression for supervised learning")
