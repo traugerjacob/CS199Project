@@ -205,7 +205,6 @@ def main(argv):
 
 			if args[2] == "regression":
 				model = performRegression(sample, params)
-				#TODO predict the model across the entire dataset
 				if(model == "lasso"):
 					theModel = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
 				
