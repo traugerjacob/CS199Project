@@ -1,5 +1,3 @@
-#MIGHT BE FIXED HAS NOT BEEN TESTED TODO find a way to filter the dataset to only get the parameters we want left in them
-#TODO split the dataset into training and testing data (also when finding the best model should we train on a smaller dataset to pick the best model and then use that model on the full dataset?)
 #TODO fill in the stubbed functions for the models
 
 from pyspark import SparkContext, SparkConf
@@ -108,7 +106,7 @@ def performLinearRegression(training, test):
 #returns the best regression model for the dataset given the parameters
 def performRegression(data, params):
 	from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD
-
+	from pyspark.mllib.evaluation import RegressionMetrics
 	training, test = data.randomSplit([.8, .2])
 
 	#These should return the error values to test against each other to see which model should be chosen
@@ -117,11 +115,25 @@ def performRegression(data, params):
 	ridgeReg = perfromRidgeRegression(training, test, params)
 
 	#TODO find out which did the best and return it
-	lassoValue = something_here
-	linRegValue = linRegValue.summary.rootMeanSquaredError
-	ridgeRegValue = something_here
+	lassoTest = (test.map(lambda x: x.label).zip(lasso.predict(test.map(lambda x: x.features))))
+	linTest = (test.map(lambda x: x.label).zip(linReg.predict(test.map(lambda x: x.features))))
+	ridgeTest = (test.map(lambda x: x.label).zip(ridgeReg.predict(test.map(lambda x: x.features))))
 
-	return min(lassoValue,linRegValue,ridgeRegValue)
+	lassoMetrics = RegressionMetrics(lassoTest.map(lambda x: (x[0], float(x[1]))))
+	linMetrics = RegressionMetrics(linTest.map(lambda x: (x[0], float(x[1]))))
+	ridgeMetrics = RegressionMetrics(ridgeTest.map(lambda x: (x[0], float(x[1]))))
+	
+	lassoValue = lassoMetrics.rootMeanSquaredError()
+	linRegValue = linMetrics.rootMeanSquaredError()
+	ridgeRegValue = ridgeMetrics.rootMeanSquaredError()
+
+	if(lassoValue < linRegValue and lassoValue < ridgeRegValue):
+		return "lasso"
+	
+	if(linRegValue < lassoValue and linRegValue < ridgeRegValue):
+		return "linear"
+
+	return "ridge"
 
 
 
