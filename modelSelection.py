@@ -112,7 +112,7 @@ def performRegression(data, params):
 	#These should return the error values to test against each other to see which model should be chosen
 	lasso = performLasso(training, test, params)
 	linReg = performLinearRegression(training, test, params)
-	ridgeReg = perfromRidgeRegression(training, test, params)
+	ridgeReg = performRidgeRegression(training, test, params)
 
 	#TODO find out which did the best and return it
 	lassoTest = (test.map(lambda x: x.label).zip(lasso.predict(test.map(lambda x: x.features))))
@@ -122,24 +122,25 @@ def performRegression(data, params):
 	lassoMetrics = RegressionMetrics(lassoTest.map(lambda x: (x[0], float(x[1]))))
 	linMetrics = RegressionMetrics(linTest.map(lambda x: (x[0], float(x[1]))))
 	ridgeMetrics = RegressionMetrics(ridgeTest.map(lambda x: (x[0], float(x[1]))))
-	
+
 	lassoValue = lassoMetrics.rootMeanSquaredError()
 	linRegValue = linMetrics.rootMeanSquaredError()
 	ridgeRegValue = ridgeMetrics.rootMeanSquaredError()
 
+	# Returns the regression model along with its value (we can explain this in the paper)
 	if(lassoValue < linRegValue and lassoValue < ridgeRegValue):
-		return "lasso"
-	
+		return "lasso regression: " + lassoValue
+
 	if(linRegValue < lassoValue and linRegValue < ridgeRegValue):
-		return "linear"
+		return "linear regression: " + linRegValue
 
-	return "ridge"
-
+	return "ridge regression: " + ridgeRegValue
 
 
 #returns the K-Means model
 def performKMeans(data, k):
-	kMeans = KMeans.train(data, k)
+	kmeans = KMeans.train(data, k)
+	return kmeans
 
 
 #reutrns the Guassian Mixture model
@@ -208,10 +209,10 @@ def main(argv):
 
 			if args[2] == "classification":
 				model = performClassification(sample, params)
-				
+
 				if(model == "Naive Bayes"):
 					theModel = NaiveBayes.train(training)
-	
+
 				else:
 					#TODO implement randomForest
 
@@ -219,10 +220,10 @@ def main(argv):
 				model = performRegression(sample, params)
 				if(model == "lasso"):
 					theModel = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
-				
+
 				elif(model == "linear"):
 					theModel = LinearRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
-				
+
 				else:
 					theModel = RidgeRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
 
