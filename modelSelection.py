@@ -1,11 +1,10 @@
-#TODO fill in the stubbed functions for the models
-
 from pyspark import SparkContext, SparkConf
 import sys
 conf = SparkConf().setAppName("Model Selection")
 sc = SparkContext(conf = conf)
 
 
+# JSON Parsing
 def jsonCheckParams(row, params):
 	for j in params:
 		if(row.get(j) == None):
@@ -25,6 +24,7 @@ def jsonFilterAndMap(data, params):
 	return data
 
 
+# CSV Parsing
 def csvCheckParams(row, params, headerDict):
 	for i in params:
 		if row[headerDict[params]] == None
@@ -48,7 +48,8 @@ def csvFilterAndMap(data, params):
 	data = data.filter(lambda x: csvCheckParams(x, params, headerDict))
 	data = data.map(lambda x: csvMap(x, params, headerDict))
 
-#returns the Naive Bayes model
+
+# Returns the Naive Bayes model
 def performNaiveBayes(training, test, params):
 	model = NaiveBayes.train(training)
 
@@ -57,64 +58,85 @@ def performNaiveBayes(training, test, params):
 	trained_metrics = MulticlassMetrics(train_preds.map(lambda x: (x[0], float(x[1]))))
 	test_metrics = MulticlassMetrics(test_preds.map(lambda x: (x[0], float(x[1]))))
 
-	#Gets the accuracy of the data (first metric?)
-	#output = str(trained_metrics.confusionMatrix().toArray()) + '\n' +
-	#		 'Training precision: ' + str(trained_metrics.precision()) + '\n' +
-	#		 str(test_metrics.confusionMatrix().toArray()) + '\n' +
-	#		 'Testing precision: ' + str(test_metrics.precision()) + '\n'
-	#return output
-	return test_metrics.precision()
+	# Use this for more information about precision for training and testing data
+	# output = str(trained_metrics.confusionMatrix().toArray()) + '\n' +
+	# 		 'Training precision: ' + str(trained_metrics.precision()) + '\n' +
+	# 		 str(test_metrics.confusionMatrix().toArray()) + '\n' +
+	# 		 'Testing precision: ' + str(test_metrics.precision()) + '\n'
+	# return output
+
+	testing_accuracy = test_metrics.precision()
+	testing_error = 1 - testing_accuracy
+
+	return (testing_accuracy, testing_error)
 
 
-#returns the Random Forest model
-def performRandomForest(data, params):
-	#return test_metrics precision for random forest
-	return None
+# Returns the Random Forest model
+def performRandomForest(training, test, params):
+	model = RandomForest.trainClassifier(data, numClasses=2, categoricalFeaturesInfo={},
+	                                     numTrees=10, featureSubsetStrategy="auto",
+	                                     impurity='gini', maxDepth=4, maxBins=32)
+
+	train_preds = (training.map(lambda x: x.label).zip(model.predict(training.map(lambda x: x.features))))
+	test_preds = (test.map(lambda x: x.label).zip(model.predict(test.map(lambda x: x.features))))
+
+	# Create evaluator to compute accuracy
+	evaluator = MulticlassClassificationEvaluator(labelCol="indexedLabel", predictionCol="prediction", metricName="accuracy")
+	training_accuracy = evaluator.evaluate(train_preds)
+	testing_accuracy = evaluator.evaluate(test_preds)
+	training_error = train_preds.filter(lambda (v, p): v != p).count() / float(training.count())
+	testing_error = test_preds.filter(lambda (v, p): v != p).count() / float(test.count())
+
+	return (testing_accuracy, testing_error)
 
 
-#returns the best model for the data given the parameters
+# Returns the best model for the data given the parameters
 def performClassification(data, params):
 	from pyspark.mllib.classification import NaiveBayes
-	from pyspark.mllib.tree import RandomForest, RandomForestModel
+	from pyspark.mllib.tree import RandomForest
 	from pyspark.mllib.evaluation import MulticlassMetrics
+	from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 
 	training, test = data.randomSplit([.8, .2])
+	naive_bayes = performNaiveBayes(training, test, params)
+	random_forest = performRandomForest(training, test, params)
 
-	naiveBayes = performNaiveBayes(training, test, params)
-	randomForest = performRandomForest(training, test, params)
-	# return the one with the higher testing data accuracy
-	return naiveBayes if naiveBayes>randomForest else randomForest
+	# Return the one with the higher testing data accuracy and lower error
+	# Need to check for error too because random forest's error is computed independent of accuracy
+	naive_bayes_accuracy, naive_bayes_error = naive_bayes
+	random_forest_accuracy, random_forest_error = random_forest
+	return "Random Forest" if random_forest_accuracy > naive_bayes_accuracy and random_forest_error < naive_bayes_error else "Naive Bayes"
 
 
-#returns the Lasso model
+# Returns the Lasso model
 def performLasso(training, test):
 	model = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
 	return model
 
 
-#returns the Ridge Regression model
+# Returns the Ridge Regression model
 def performRidgeRegression(training, test):
 	model = RidgeRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
 	return model
 
-#returns the Linear Regression model
+
+# Returns the Linear Regression model
 def performLinearRegression(training, test):
 	model = LinearRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
 	return model
 
 
-#returns the best regression model for the dataset given the parameters
+# Returns the best regression model for the dataset given the parameters
 def performRegression(data, params):
 	from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD
 	from pyspark.mllib.evaluation import RegressionMetrics
 	training, test = data.randomSplit([.8, .2])
 
-	#These should return the error values to test against each other to see which model should be chosen
+	# These should return the error values to test against each other to see which model should be chosen
 	lasso = performLasso(training, test, params)
 	linReg = performLinearRegression(training, test, params)
 	ridgeReg = performRidgeRegression(training, test, params)
 
-	#TODO find out which did the best and return it
 	lassoTest = (test.map(lambda x: x.label).zip(lasso.predict(test.map(lambda x: x.features))))
 	linTest = (test.map(lambda x: x.label).zip(linReg.predict(test.map(lambda x: x.features))))
 	ridgeTest = (test.map(lambda x: x.label).zip(ridgeReg.predict(test.map(lambda x: x.features))))
@@ -127,14 +149,14 @@ def performRegression(data, params):
 	linRegValue = linMetrics.rootMeanSquaredError()
 	ridgeRegValue = ridgeMetrics.rootMeanSquaredError()
 
-	# Returns the regression model along with its value (we can explain this in the paper)
+	# Returns the regression model
 	if(lassoValue < linRegValue and lassoValue < ridgeRegValue):
-		return "lasso regression: " + lassoValue
+		return "Lasso Regression"
 
 	if(linRegValue < lassoValue and linRegValue < ridgeRegValue):
-		return "linear regression: " + linRegValue
+		return "Linear Regression"
 
-	return "ridge regression: " + ridgeRegValue
+	return "Ridge Regression"
 
 
 #returns the K-Means model
