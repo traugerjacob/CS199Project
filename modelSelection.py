@@ -53,22 +53,13 @@ def csvFilterAndMap(data, params):
 def performNaiveBayes(training, test, params):
 	model = NaiveBayes.train(training)
 
-	train_preds = (training.map(lambda x: x.label).zip(model.predict(training.map(lambda x: x.features))))
 	test_preds = (test.map(lambda x: x.label).zip(model.predict(test.map(lambda x: x.features))))
-	trained_metrics = MulticlassMetrics(train_preds.map(lambda x: (x[0], float(x[1]))))
 	test_metrics = MulticlassMetrics(test_preds.map(lambda x: (x[0], float(x[1]))))
 
-	# Use this for more information about precision for training and testing data
-	# output = str(trained_metrics.confusionMatrix().toArray()) + '\n' +
-	# 		 'Training precision: ' + str(trained_metrics.precision()) + '\n' +
-	# 		 str(test_metrics.confusionMatrix().toArray()) + '\n' +
-	# 		 'Testing precision: ' + str(test_metrics.precision()) + '\n'
-	# return output
 
 	testing_accuracy = test_metrics.precision()
-	testing_error = 1 - testing_accuracy
 
-	return (testing_accuracy, testing_error)
+	return testing_accuracy
 
 
 # Returns the Random Forest model
@@ -82,12 +73,9 @@ def performRandomForest(training, test, params):
 
 	# Create evaluator to compute accuracy
 	evaluator = MulticlassClassificationEvaluator(labelCol="indexedLabel", predictionCol="prediction", metricName="accuracy")
-	training_accuracy = evaluator.evaluate(train_preds)
 	testing_accuracy = evaluator.evaluate(test_preds)
-	training_error = train_preds.filter(lambda (v, p): v != p).count() / float(training.count())
-	testing_error = test_preds.filter(lambda (v, p): v != p).count() / float(test.count())
 
-	return (testing_accuracy, testing_error)
+	return testing_accuracy
 
 
 # Returns the best model for the data given the parameters
@@ -103,9 +91,9 @@ def performClassification(data, params):
 
 	# Return the one with the higher testing data accuracy and lower error
 	# Need to check for error too because random forest's error is computed independent of accuracy
-	naive_bayes_accuracy, naive_bayes_error = naive_bayes
-	random_forest_accuracy, random_forest_error = random_forest
-	return "Random Forest" if random_forest_accuracy > naive_bayes_accuracy and random_forest_error < naive_bayes_error else "Naive Bayes"
+	naive_bayes_accuracy = naive_bayes
+	random_forest_accuracy = random_forest
+	return "Random Forest" if random_forest_accuracy > naive_bayes_accuracy else "Naive Bayes"
 
 
 # Returns the Lasso model
@@ -151,12 +139,12 @@ def performRegression(data, params):
 
 	# Returns the regression model
 	if(lassoValue < linRegValue and lassoValue < ridgeRegValue):
-		return "Lasso Regression"
+		return "lasso"
 
 	if(linRegValue < lassoValue and linRegValue < ridgeRegValue):
-		return "Linear Regression"
+		return "linear"
 
-	return "Ridge Regression"
+	return "ridge"
 
 
 # Returns the K-Means model
@@ -178,7 +166,7 @@ def error(point):
 
 # Finds the best k-value and its error, if not found, returns k=30 and its error
 def getKValue(arr,diff):
-	for i in range(1,len(arr)):
+	for i in range(1,len(arr) - 1):
 		if(arr[i] - arr[i-1] <= diff):
 			return (i, arr[i])
 	return (len(arr)-1, arr[len(arr)-1])
@@ -206,7 +194,7 @@ def performClustering(data, params):
 	bestGaussianK, GaussianMixtureError = getKValue(guassian_mixture_values, 0.1 * abs(guassian_mixture_values[1]-guassian_mixture_values[0]))
 
 	# Return the model with the least error
-	return "KMeans with k=" + bestKMeansK if kMeansError < GaussianMixtureError else "Gaussian Mixture with k=" + bestGaussianK
+	return ("KMeans", bestKMeansK) if kMeansError < GaussianMixtureError else ("gaussian", bestGaussianK)
 
 
 # MODEL SELECTION ALGORITHM
@@ -254,7 +242,10 @@ def main(argv):
 					theModel = NaiveBayes.train(training)
 
 				else:
-					#TODO implement randomForest
+					theModel = RandomForest.trainClassifier(data, numClasses=2, categoricalFeaturesInfo={},
+	                                     numTrees=10, featureSubsetStrategy="auto",
+	                                     impurity='gini', maxDepth=4, maxBins=32)
+
 
 			if args[2] == "regression":
 				model = performRegression(sample, params)
@@ -282,6 +273,7 @@ def main(argv):
 					theModel = KMeans.train(datasetTraining, model[1])
 
 				return theModel
+			
 			else:
 				print("Currently this model selection algorithm only supports clustering for unsupervised algorithms")
 				return
