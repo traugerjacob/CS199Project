@@ -159,39 +159,57 @@ def performRegression(data, params):
 	return "Ridge Regression"
 
 
-#returns the K-Means model
+# Returns the K-Means model
 def performKMeans(data, k):
 	kmeans = KMeans.train(data, k)
 	return kmeans
 
 
-#reutrns the Guassian Mixture model
+# Returns the Guassian Mixture model
 def performGaussianMixture(data, k):
 	gmm = GaussianMixture.train(data, k)
 	return gmm
 
-#returns the best clustering model for the dataset given the parameters
+
+# Gets the error of the model
+def error(point):
+    center = clusters.centers[clusters.predict(point)]
+    return sqrt(sum([x**2 for x in (point - center)]))
+
+# Finds the best k-value and its error, if not found, returns k=30 and its error
+def getKValue(arr,diff):
+	for i in range(1,len(arr)):
+		if(arr[i] - arr[i-1] <= diff):
+			return (i, arr[i])
+	return (len(arr)-1, arr[len(arr)-1])
+
+# Returns the best clustering model for the dataset given the parameters
 def performClustering(data, params):
 	from pyspark.mllib.clustering import KMeans, KMeansModel
 	from pyspark.mllib.clustering import GaussianMixture, GaussianMixtureModel
+	from numpy import array
+	from math import sqrt
 
-	#Make sure to find the best k value.
-	bestKMeans = 2
-	bestKGaussian = 2
-	kMeansBest = -1
-	guassianBest = -1
-	for k in range(2,20):
-		kMeans = performKMeans(data, k)
-		guassian = performGuassianMixture(data, k)
-		#TODO do some computations to see if this k is best (it isnt going to be the best value but where right before where the dimishing returns is too great)
-		#And see if KMeans or guassian does better with each of their respective best k values
-	if guassian < kMeans:
-		return ("guassian", bestKGuassian)
-	else:
-		return ("kMeans", bestKMeans)
+	kmeans_values = []
+	guassian_mixture_values = []
+
+	# Try k-values from k=1 to k=30
+	for k in range(1,31):
+		clusters = KMeans.train(data,k)
+		kmeans_values.append(data.map(lambda point: error(point)).reduce(lambda x, y: x + y))
+		clusters = GaussianMixture.train(data,k)
+		guassian_mixture_values.append(data.map(lambda point: error(point)).reduce(lambda x, y: x + y))
+
+	# Best k-value is calculated when the error difference of two k-values is 10% of the error difference of k=1 and k=2
+	# This tries to mimic the elbow method, or where the difference between errors is too small
+	bestKMeansK, kMeansError = getKValue(kmeans_values, 0.1 * abs(kmeans_values[1]-kmeans_values[0]))
+	bestGaussianK, GaussianMixtureError = getKValue(guassian_mixture_values, 0.1 * abs(guassian_mixture_values[1]-guassian_mixture_values[0]))
+
+	# Return the model with the least error
+	return "KMeans with k=" + bestKMeansK if kMeansError < GaussianMixtureError else "Gaussian Mixture with k=" + bestGaussianK
 
 
-
+# MODEL SELECTION ALGORITHM
 def main(argv):
 	if len(argv) < 5:
 		print("The arguments for this script require:\n" +
