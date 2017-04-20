@@ -1,5 +1,19 @@
 from pyspark import SparkContext, SparkConf
 import sys
+from pyspark.mllib.classification import NaiveBayes
+from pyspark.mllib.tree import RandomForest
+from pyspark.mllib.evaluation import MulticlassMetrics
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD, LinearRegressionModel, RidgeRegressionModel, LassoModel
+from pyspark.mllib.evaluation import RegressionMetrics
+from pyspark.mllib.clustering import KMeans, KMeansModel
+from pyspark.mllib.clustering import GaussianMixture, GaussianMixtureModel
+from numpy import array
+from math import sqrt
+import json
+import csv
+from pyspark.mllib.regression import LabeledPoint
+
 conf = SparkConf().setAppName("Model Selection")
 sc = SparkContext(conf = conf)
 
@@ -11,7 +25,7 @@ def jsonCheckParams(row, params):
 			return False
 	return True
 
-def jsonMap(row, params)
+def jsonMap(row, params):
 	t = ()
 	for i in params:
 		t = t + (row.get(i),)
@@ -27,7 +41,7 @@ def jsonFilterAndMap(data, params):
 # CSV Parsing
 def csvCheckParams(row, params, headerDict):
 	for i in params:
-		if row[headerDict[params]] == None
+		if row[headerDict[params]] == None:
 			return False
 	return True
 
@@ -79,12 +93,7 @@ def performRandomForest(training, test, params):
 
 
 # Returns the best model for the data given the parameters
-def performClassification(data, params):
-	from pyspark.mllib.classification import NaiveBayes
-	from pyspark.mllib.tree import RandomForest
-	from pyspark.mllib.evaluation import MulticlassMetrics
-	from pyspark.ml.evaluation import MulticlassClassificationEvaluator
-
+def performClassification(data, params):	
 	training, test = data.randomSplit([.8, .2])
 	naive_bayes = performNaiveBayes(training, test, params)
 	random_forest = performRandomForest(training, test, params)
@@ -97,33 +106,32 @@ def performClassification(data, params):
 
 
 # Returns the Lasso model
-def performLasso(training, test):
+def performLasso(training):
+
 	model = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
 	return model
 
 
 # Returns the Ridge Regression model
-def performRidgeRegression(training, test):
+def performRidgeRegression(training):
 	model = RidgeRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
 	return model
 
 
 # Returns the Linear Regression model
-def performLinearRegression(training, test):
+def performLinearRegression(training):
 	model = LinearRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
 	return model
 
 
 # Returns the best regression model for the dataset given the parameters
 def performRegression(data, params):
-	from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD
-	from pyspark.mllib.evaluation import RegressionMetrics
 	training, test = data.randomSplit([.8, .2])
 
 	# These should return the error values to test against each other to see which model should be chosen
-	lasso = performLasso(training, test, params)
-	linReg = performLinearRegression(training, test, params)
-	ridgeReg = performRidgeRegression(training, test, params)
+	lasso = performLasso(training)
+	linReg = performLinearRegression(training)
+	ridgeReg = performRidgeRegression(training)
 
 	lassoTest = (test.map(lambda x: x.label).zip(lasso.predict(test.map(lambda x: x.features))))
 	linTest = (test.map(lambda x: x.label).zip(linReg.predict(test.map(lambda x: x.features))))
@@ -173,11 +181,6 @@ def getKValue(arr,diff):
 
 # Returns the best clustering model for the dataset given the parameters
 def performClustering(data, params):
-	from pyspark.mllib.clustering import KMeans, KMeansModel
-	from pyspark.mllib.clustering import GaussianMixture, GaussianMixtureModel
-	from numpy import array
-	from math import sqrt
-
 	kmeans_values = []
 	guassian_mixture_values = []
 
@@ -213,21 +216,17 @@ def main(argv):
 		dataset = sc.textFile(args[0])
 		params = argv[3:]
 		if args[-3:] == "csv":
-			import csv
 			dataset = csvFilterAndMap(dataset, params)
 
 		elif args[-4:] =="json":
-			import json
 			dataset = jsonFilterAndMap(dataset, params)
 
 
 
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
-			from pyspark.mllib.regression import LabeledPoint
-
-			labels = data.map(lambda x: x[0])
-			values = data.map(lambda x: x[1:])
+			labels = dataset.map(lambda x: x[0])
+			values = dataset.map(lambda x: x[1:])
 			zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
 
 			datasetTraining, datasetTest = zipped_data.randomSplit([.75, .25])
