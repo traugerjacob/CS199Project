@@ -53,14 +53,15 @@ def csvMap(row, params, headerDict):
 
 def csvFilterAndMap(data, params):
 	data = data.mapPartitions(lambda x: csv.reader(x))
-	header = data.first()
+	header = sc.parallelize(data.first())
 	data = data.subtract(header)
 	header = header.collect()
 	headerDict = {}
-	for i in range(len(header[0])):
-		headerDict[header[0][i]] = i
+	for i in range(len(header)):
+		headerDict[header[i]] = i
 	data = data.filter(lambda x: csvCheckParams(x, params, headerDict))
 	data = data.map(lambda x: csvMap(x, params, headerDict))
+	return data
 
 
 # Returns the Naive Bayes model
@@ -107,7 +108,6 @@ def performClassification(data, params):
 
 # Returns the Lasso model
 def performLasso(training):
-
 	model = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
 	return model
 
@@ -201,7 +201,7 @@ def performClustering(data, params):
 
 
 # MODEL SELECTION ALGORITHM
-def main(argv):
+def modelSelection(argv):
 	if len(argv) < 5:
 		print("The arguments for this script require:\n" +
 				"path/to/filename of the dataset\n" +
@@ -214,11 +214,11 @@ def main(argv):
 
 		#sets up the RDD
 		dataset = sc.textFile(args[0])
-		params = argv[3:]
-		if args[-3:] == "csv":
+		params = args[3:]
+		if args[0][-3:] == "csv":
 			dataset = csvFilterAndMap(dataset, params)
 
-		elif args[-4:] =="json":
+		elif args[0][-4:] =="json":
 			dataset = jsonFilterAndMap(dataset, params)
 
 
@@ -232,8 +232,7 @@ def main(argv):
 			datasetTraining, datasetTest = zipped_data.randomSplit([.75, .25])
 
 			sample = zipped_data.sample(False, .3)
-
-
+			
 			if args[2] == "classification":
 				model = performClassification(sample, params)
 
@@ -278,4 +277,4 @@ def main(argv):
 				return
 
 
-main(sys.argv)
+modelSelection(sys.argv)
