@@ -109,19 +109,19 @@ def performClassification(data, params):
 
 # Returns the Lasso model
 def performLasso(training):
-	model = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
+	model = LassoWithSGD.train(training, iterations = 100, step = 0.001)
 	return model
 
 
 # Returns the Ridge Regression model
 def performRidgeRegression(training):
-	model = RidgeRegressionWithSGD.train(training, iterations = 100, step = 0.00000001)
+	model = RidgeRegressionWithSGD.train(training, iterations = 100, step = 0.001)
 	return model
 
 
 # Returns the Linear Regression model
 def performLinearRegression(training):
-	model = LinearRegressionWithSGD.train(training, iterations = 100, step = 0.00000001)
+	model = LinearRegressionWithSGD.train(training, iterations = 100, step = 0.001)
 	return model
 
 
@@ -166,7 +166,7 @@ def performGaussianMixture(data, k):
 
 
 # Gets the error of the model
-def error(point):
+def error(clusters, point):
     center = clusters.centers[clusters.predict(point)]
     return sqrt(sum([x**2 for x in (point - center)]))
 
@@ -184,9 +184,10 @@ def performClustering(data, params):
 	# Try k-values from k=1 to k=30
 	for k in range(1,31):
 		clusters = KMeans.train(data,k)
-		kmeans_values.append(data.map(lambda point: error(point)).reduce(lambda x, y: x + y))
+		kmeans_values.append(data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
+		
 		clusters = GaussianMixture.train(data,k)
-		guassian_mixture_values.append(data.map(lambda point: error(point)).reduce(lambda x, y: x + y))
+		guassian_mixture_values.append(data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
 	# Best k-value is calculated when the error difference of two k-values is 10% of the error difference of k=1 and k=2
 	# This tries to mimic the elbow method, or where the difference between errors is too small
 	bestKMeansK, kMeansError = getKValue(kmeans_values, 0.1 * abs(kmeans_values[1]-kmeans_values[0]))
@@ -220,7 +221,7 @@ def modelSelection(argv):
 			
 		elif args[0][-4:] =="json":
 			dataset = jsonFilterAndMap(dataset, params)
-		
+
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
 			labels = dataset.map(lambda x: x[0])
@@ -228,39 +229,54 @@ def modelSelection(argv):
 			zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
 			datasetTraining, datasetTest = zipped_data.randomSplit([.75, .25])
 			sample = zipped_data.sample(False, .3)
-			
 			if args[2] == "classification":
 				#model = performClassification(sample, params)
 				
 				#if(model == "Naive Bayes"):
 					theModel = NaiveBayes.train(datasetTraining)
+					test_preds = (datasetTest.map(lambda x: x.label).zip(theModel.predict(datasetTest.map(lambda x: x.features))))
+					test_metrics = MulticlassMetrics(test_preds.map(lambda x: (x[0], float(x[1]))))
+					testing_accuracy = test_metrics.precision()
+					with open('results.txt', 'w+') as f:
+						f.write(str(testing_accuracy))
+					return theModel
+
 				#else:
 
 				#	theModel = LogisticRegressionWithSGD.train(datasetTraining)#RandomForest.trainClassifier(datasetTraining, numClasses=2, categoricalFeaturesInfo={},
 	                                     #numTrees=10, featureSubsetStrategy="auto",
 	                                     #impurity='gini', maxDepth=4, maxBins=32)
-			if args[2] == "regression":
+			elif args[2] == "regression":
 				model = performRegression(sample, params)
 				if(model == "lasso"):
-					theModel = LassoWithSGD.train(datasetTraining, iterations = 100, step = 0.00000001)
+					theModel = LassoWithSGD.train(datasetTraining, iterations = 100, step = 0.001)
 				elif(model == "linear"):
-					theModel = LinearRegressionWithSGD.train(datasetTraining, iterations = 100, step = 0.00000001)
+					theModel = LinearRegressionWithSGD.train(datasetTraining, iterations = 100, step = 0.001)
 				else:
-					theModel = RidgeRegressionWithSGD.train(datasetTraining, iterations = 100, step = 0.00000001)
+					theModel = RidgeRegressionWithSGD.train(datasetTraining, iterations = 100, step = 0.001)
+				test = (datasetTest.map(lambda x: x.label).zip(theModel.predict(datasetTest.map(lambda x: x.features))))
+				metrics = RegressionMetrics(test.map(lambda x: (x[0], float(x[1]))))
+				value = metrics.rootMeanSquaredError
+				with open('results.txt', 'w+') as f:
+					f.write(model +" root mean squared error: ")
+					f.write(str(value))
+				return theModel
+
 			else:
 				print("Please use rather classification or regression for supervised learning")
 				return
 
-		if args[1] == "unsupervised":
-			
+		elif args[1] == "unsupervised":
+			sample = dataset.sample(False, .3)
 			if args[2] == "clustering":
-				model = perfromClustering(sample, params)
+				model = performClustering(sample, params)
 				
 				if(model[0] == "gaussian"):
 					theModel = GuassianMixture.train(datasetTraining, model[1])
 				else:
 					theModel = KMeans.train(datasetTraining, model[1])
-				
+				with open('results.txt', 'w+') as f:
+					f.write(str(model))
 				return theModel
 			else:
 				print("Currently this model selection algorithm only supports clustering for unsupervised algorithms")
