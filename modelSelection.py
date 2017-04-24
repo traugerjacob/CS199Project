@@ -1,3 +1,4 @@
+#USE THIS COMMAND TO TEST CSV pyspark modelSelection.py hdfs:///shared/amazon_food_reviews.csv supervised regression Score HelpfulnessNumerator
 from pyspark import SparkContext, SparkConf
 import sys
 from pyspark.mllib.classification import NaiveBayes
@@ -13,7 +14,6 @@ from math import sqrt
 import json
 import csv
 from pyspark.mllib.regression import LabeledPoint
-
 conf = SparkConf().setAppName("Model Selection")
 sc = SparkContext(conf = conf)
 
@@ -41,21 +41,19 @@ def jsonFilterAndMap(data, params):
 # CSV Parsing
 def csvCheckParams(row, params, headerDict):
 	for i in params:
-		if row[headerDict[params]] == None:
+		if str(row[headerDict[i]]).isalpha() or row[headerDict[i]] == None:
 			return False
 	return True
 
 def csvMap(row, params, headerDict):
 	t = ()
 	for i in params:
-		t = t + (row[headerDict[params]],)
+		t = t + (row[headerDict[i]],)
 	return t
 
 def csvFilterAndMap(data, params):
 	data = data.mapPartitions(lambda x: csv.reader(x))
-	header = sc.parallelize(data.first())
-	data = data.subtract(header)
-	header = header.collect()
+	header = data.first()
 	headerDict = {}
 	for i in range(len(header)):
 		headerDict[header[i]] = i
@@ -106,13 +104,13 @@ def performLasso(training):
 
 # Returns the Ridge Regression model
 def performRidgeRegression(training):
-	model = RidgeRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
+	model = RidgeRegressionWithSGD.train(training, iterations = 100, step = 0.00000001)
 	return model
 
 
 # Returns the Linear Regression model
 def performLinearRegression(training):
-	model = LinearRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
+	model = LinearRegressionWithSGD.train(training, iterations = 100, step = 0.00000001)
 	return model
 
 
@@ -123,15 +121,19 @@ def performRegression(data, params):
 	lasso = performLasso(training)
 	linReg = performLinearRegression(training)
 	ridgeReg = performRidgeRegression(training)
+	
 	lassoTest = (test.map(lambda x: x.label).zip(lasso.predict(test.map(lambda x: x.features))))
 	linTest = (test.map(lambda x: x.label).zip(linReg.predict(test.map(lambda x: x.features))))
 	ridgeTest = (test.map(lambda x: x.label).zip(ridgeReg.predict(test.map(lambda x: x.features))))
+	
 	lassoMetrics = RegressionMetrics(lassoTest.map(lambda x: (x[0], float(x[1]))))
 	linMetrics = RegressionMetrics(linTest.map(lambda x: (x[0], float(x[1]))))
 	ridgeMetrics = RegressionMetrics(ridgeTest.map(lambda x: (x[0], float(x[1]))))
-	lassoValue = lassoMetrics.rootMeanSquaredError()
-	linRegValue = linMetrics.rootMeanSquaredError()
-	ridgeRegValue = ridgeMetrics.rootMeanSquaredError()
+	
+	lassoValue = lassoMetrics.rootMeanSquaredError
+	linRegValue = linMetrics.rootMeanSquaredError
+	ridgeRegValue = ridgeMetrics.rootMeanSquaredError
+	
 	# Returns the regression model
 	if(lassoValue < linRegValue and lassoValue < ridgeRegValue):
 		return "lasso"
@@ -198,13 +200,16 @@ def modelSelection(argv):
 				"other parameters\n")
 	else:
 		args = argv[1:]
+
 		#sets up the RDD
 		dataset = sc.textFile(args[0])
 		params = args[3:]
 		if args[0][-3:] == "csv":
 			dataset = csvFilterAndMap(dataset, params)
+			
 		elif args[0][-4:] =="json":
 			dataset = jsonFilterAndMap(dataset, params)
+		
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
 			labels = dataset.map(lambda x: x[0])
@@ -212,11 +217,14 @@ def modelSelection(argv):
 			zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
 			datasetTraining, datasetTest = zipped_data.randomSplit([.75, .25])
 			sample = zipped_data.sample(False, .3)
+			
 			if args[2] == "classification":
 				model = performClassification(sample, params)
+				
 				if(model == "Naive Bayes"):
 					theModel = NaiveBayes.train(training)
 				else:
+
 					theModel = RandomForest.trainClassifier(data, numClasses=2, categoricalFeaturesInfo={},
 	                                     numTrees=10, featureSubsetStrategy="auto",
 	                                     impurity='gini', maxDepth=4, maxBins=32)
@@ -231,13 +239,17 @@ def modelSelection(argv):
 			else:
 				print("Please use rather classification or regression for supervised learning")
 				return
+
 		if args[1] == "unsupervised":
+			
 			if args[2] == "clustering":
 				model = perfromClustering(sample, params)
+				
 				if(model[0] == "gaussian"):
 					theModel = GuassianMixture.train(datasetTraining, model[1])
 				else:
 					theModel = KMeans.train(datasetTraining, model[1])
+				
 				return theModel
 			else:
 				print("Currently this model selection algorithm only supports clustering for unsupervised algorithms")
