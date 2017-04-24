@@ -2,6 +2,7 @@
 from pyspark import SparkContext, SparkConf
 import sys
 from pyspark.mllib.classification import NaiveBayes
+from pyspark.mllib.classification import LogisticRegressionWithSGD, LogisticRegressionModel
 from pyspark.mllib.tree import RandomForest
 from pyspark.mllib.evaluation import MulticlassMetrics
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
@@ -73,11 +74,20 @@ def performNaiveBayes(training, test, params):
 
 # Returns the Random Forest model
 def performRandomForest(training, test, params):
-	model = RandomForest.trainClassifier(data, numClasses=2, categoricalFeaturesInfo={},
+	model = RandomForest.trainClassifier(training, numClasses=2, categoricalFeaturesInfo={},
 	                                     numTrees=10, featureSubsetStrategy="auto",
 	                                     impurity='gini', maxDepth=4, maxBins=32)
 	train_preds = (training.map(lambda x: x.label).zip(model.predict(training.map(lambda x: x.features))))
 	test_preds = (test.map(lambda x: x.label).zip(model.predict(test.map(lambda x: x.features))))
+	# Create evaluator to compute accuracy
+	evaluator = MulticlassClassificationEvaluator(labelCol="indexedLabel", predictionCol="prediction", metricName="accuracy")
+	testing_accuracy = evaluator.evaluate(test_preds)
+	return testing_accuracy
+
+def performLogisticRegression(training, test, params):
+	model = LogisticRegressionWithSGD.train(training)
+	test_preds = test.map(lambda p: (p.label, model.predict(p.features)))
+	
 	# Create evaluator to compute accuracy
 	evaluator = MulticlassClassificationEvaluator(labelCol="indexedLabel", predictionCol="prediction", metricName="accuracy")
 	testing_accuracy = evaluator.evaluate(test_preds)
@@ -88,12 +98,13 @@ def performRandomForest(training, test, params):
 def performClassification(data, params):
 	training, test = data.randomSplit([.8, .2])
 	naive_bayes = performNaiveBayes(training, test, params)
-	random_forest = performRandomForest(training, test, params)
+	#random_forest = performRandomForest(training, test, params)
 	# Return the one with the higher testing data accuracy and lower error
 	# Need to check for error too because random forest's error is computed independent of accuracy
-	naive_bayes_accuracy = naive_bayes
-	random_forest_accuracy = random_forest
-	return "Random Forest" if random_forest_accuracy > naive_bayes_accuracy else "Naive Bayes"
+	#naive_bayes_accuracy = naive_bayes
+	#random_forest_accuracy = random_forest
+	logistic = performLogisticRegression(training, test, params)
+	return "logistic" if logistic > naive_bayes else "Naive Bayes"
 
 
 # Returns the Lasso model
@@ -219,23 +230,23 @@ def modelSelection(argv):
 			sample = zipped_data.sample(False, .3)
 			
 			if args[2] == "classification":
-				model = performClassification(sample, params)
+				#model = performClassification(sample, params)
 				
-				if(model == "Naive Bayes"):
-					theModel = NaiveBayes.train(training)
-				else:
+				#if(model == "Naive Bayes"):
+					theModel = NaiveBayes.train(datasetTraining)
+				#else:
 
-					theModel = RandomForest.trainClassifier(data, numClasses=2, categoricalFeaturesInfo={},
-	                                     numTrees=10, featureSubsetStrategy="auto",
-	                                     impurity='gini', maxDepth=4, maxBins=32)
+				#	theModel = LogisticRegressionWithSGD.train(datasetTraining)#RandomForest.trainClassifier(datasetTraining, numClasses=2, categoricalFeaturesInfo={},
+	                                     #numTrees=10, featureSubsetStrategy="auto",
+	                                     #impurity='gini', maxDepth=4, maxBins=32)
 			if args[2] == "regression":
 				model = performRegression(sample, params)
 				if(model == "lasso"):
-					theModel = LassoWithSGD.train(training, iterations = 100, step = 0.00000001)
+					theModel = LassoWithSGD.train(datasetTraining, iterations = 100, step = 0.00000001)
 				elif(model == "linear"):
-					theModel = LinearRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
+					theModel = LinearRegressionWithSGD.train(datasetTraining, iterations = 100, step = 0.00000001)
 				else:
-					theModel = RidgeRegressionWithSGD.train(data, iterations = 100, step = 0.00000001)
+					theModel = RidgeRegressionWithSGD.train(datasetTraining, iterations = 100, step = 0.00000001)
 			else:
 				print("Please use rather classification or regression for supervised learning")
 				return
