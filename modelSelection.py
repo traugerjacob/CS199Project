@@ -171,11 +171,12 @@ def error(clusters, point):
     return sqrt(sum([x**2 for x in (point - center)]))
 
 # Finds the best k-value and its error, if not found, returns k=30 and its error
-def getKValue(arr,diff):
+def getKValue(arr):
+	diff = .1 * abs(arr[0] - arr[1])
 	for i in range(1,len(arr) - 1):
-		if(arr[i] - arr[i-1] <= diff):
-			return (i, arr[i])
-	return (len(arr)-1, arr[len(arr)-1])
+		if(abs(arr[i] - arr[i-1]) <= diff):
+			return i+1
+	return len(arr)
 
 # Returns the best clustering model for the dataset given the parameters
 def performClustering(data, params):
@@ -186,14 +187,14 @@ def performClustering(data, params):
 		clusters = KMeans.train(data,k)
 		kmeans_values.append(data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
 		
-		clusters = GaussianMixture.train(data,k)
-		guassian_mixture_values.append(data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
+		#clusters = GaussianMixture.train(data,k)
+		#guassian_mixture_values.append(100000)#data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
 	# Best k-value is calculated when the error difference of two k-values is 10% of the error difference of k=1 and k=2
 	# This tries to mimic the elbow method, or where the difference between errors is too small
-	bestKMeansK, kMeansError = getKValue(kmeans_values, 0.1 * abs(kmeans_values[1]-kmeans_values[0]))
-	bestGaussianK, GaussianMixtureError = getKValue(guassian_mixture_values, 0.1 * abs(guassian_mixture_values[1]-guassian_mixture_values[0]))
+	bestKMeansK = getKValue(kmeans_values)
+	#bestGaussianK, GaussianMixtureError = getKValue(guassian_mixture_values, 0.1 * abs(guassian_mixture_values[1]-guassian_mixture_values[0]))
 	# Return the model with the least error
-	return ("KMeans", bestKMeansK) if kMeansError < GaussianMixtureError else ("gaussian", bestGaussianK)
+	return ("KMeans", bestKMeansK) #if kMeansError < GaussianMixtureError else ("gaussian", bestGaussianK)
 
 
 #Added for pyspark testing
@@ -249,11 +250,11 @@ def modelSelection(argv):
 			elif args[2] == "regression":
 				model = performRegression(sample, params)
 				if(model == "lasso"):
-					theModel = LassoWithSGD.train(datasetTraining, iterations = 100, step = 0.001)
+					theModel = LassoWithSGD.train(datasetTraining, iterations = 1000, step = 0.001)
 				elif(model == "linear"):
-					theModel = LinearRegressionWithSGD.train(datasetTraining, iterations = 100, step = 0.001)
+					theModel = LinearRegressionWithSGD.train(datasetTraining, iterations = 1000, step = 0.001)
 				else:
-					theModel = RidgeRegressionWithSGD.train(datasetTraining, iterations = 100, step = 0.001)
+					theModel = RidgeRegressionWithSGD.train(datasetTraining, iterations = 1000, step = 0.001)
 				test = (datasetTest.map(lambda x: x.label).zip(theModel.predict(datasetTest.map(lambda x: x.features))))
 				metrics = RegressionMetrics(test.map(lambda x: (x[0], float(x[1]))))
 				value = metrics.rootMeanSquaredError
@@ -272,9 +273,9 @@ def modelSelection(argv):
 				model = performClustering(sample, params)
 				
 				if(model[0] == "gaussian"):
-					theModel = GuassianMixture.train(datasetTraining, model[1])
+					theModel = GuassianMixture.train(dataset, model[1])
 				else:
-					theModel = KMeans.train(datasetTraining, model[1])
+					theModel = KMeans.train(dataset, model[1])
 				with open('results.txt', 'w+') as f:
 					f.write(str(model))
 				return theModel
