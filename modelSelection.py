@@ -201,6 +201,12 @@ def performClustering(data, params):
 def modelSelectionAlternative(path,supervisedOrNot,mlType,parameter,otherParam):
 	modelSelection([path,supervisedOrNot,mlType,parameter,otherParam])
 
+#TODO delete this method when everything works
+def printFeatures(rdd):
+	feat = rdd.map(lambda x: x.features)
+	return feat
+
+
 
 # MODEL SELECTION ALGORITHM
 def modelSelection(argv):
@@ -230,6 +236,12 @@ def modelSelection(argv):
 			zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
 			datasetTraining, datasetTest = zipped_data.randomSplit([.75, .25])
 			sample = zipped_data.sample(False, .3)
+			#TODO delete this write to file when everything is predicting correctly
+			with open('datapoints.txt', 'w+') as f:
+				f.write(str(zipped_data.take(10)))
+				f.write('\n')
+				f.write(str(printFeatures(zipped_data).take(10)))
+			
 			if args[2] == "classification":
 				#model = performClassification(sample, params)
 				
@@ -240,6 +252,7 @@ def modelSelection(argv):
 					testing_accuracy = test_metrics.precision()
 					with open('results.txt', 'w+') as f:
 						f.write(str(testing_accuracy))
+						f.write(str(test_metrics.confusionMatrix().toArray()))
 					return theModel
 
 				#else:
