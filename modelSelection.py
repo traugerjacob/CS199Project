@@ -1,7 +1,7 @@
 #USE THIS COMMAND TO TEST CSV pyspark modelSelection.py hdfs:///shared/amazon_food_reviews.csv supervised regression Score HelpfulnessNumerator
 from pyspark import SparkContext, SparkConf
 import sys
-from pyspark.mllib.classification import NaiveBayes
+from pyspark.mllib.classification import NaiveBayes, NaiveBayesModel
 from pyspark.mllib.classification import LogisticRegressionWithSGD, LogisticRegressionModel
 from pyspark.mllib.tree import RandomForest
 from pyspark.mllib.evaluation import MulticlassMetrics
@@ -201,12 +201,23 @@ def performClustering(data, params):
 def modelSelectionAlternative(path,supervisedOrNot,mlType,parameter,otherParam):
 	modelSelection([path,supervisedOrNot,mlType,parameter,otherParam])
 
+
+#TODO delete this method when everything works
+def printLabels(rdd):
+	labels = rdd.map(lambda x: x.label)
+	return labels
+
 #TODO delete this method when everything works
 def printFeatures(rdd):
 	feat = rdd.map(lambda x: x.features)
 	return feat
 
-
+#TODO delete this method when everything works
+def makeDataset():
+	arr = []
+	for i in range(100):
+		arr.append([i%10,i%10])
+	return arr
 
 # MODEL SELECTION ALGORITHM
 def modelSelection(argv):
@@ -229,25 +240,44 @@ def modelSelection(argv):
 		elif args[0][-4:] =="json":
 			dataset = jsonFilterAndMap(dataset, params)
 
+		#TODO delete this below too
+		dataset = sc.parallelize(makeDataset())
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
 			labels = dataset.map(lambda x: x[0])
 			values = dataset.map(lambda x: x[1:])
 			zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
-			datasetTraining, datasetTest = zipped_data.randomSplit([.75, .25])
+			datasetTraining, datasetTest = zipped_data.randomSplit([.8, .2])
 			sample = zipped_data.sample(False, .3)
 			#TODO delete this write to file when everything is predicting correctly
 			with open('datapoints.txt', 'w+') as f:
-				f.write(str(zipped_data.take(10)))
-				f.write('\n')
-				f.write(str(printFeatures(zipped_data).take(10)))
+				f.write("zipped_data:	" + str(zipped_data.take(10)))
+				f.write('\n\n')
+				f.write(str(printFeatures(zipped_data).take(10))+"\n")
+				f.write(str(printLabels(zipped_data).take(10)))
+				f.write('\n\n\n')
 			
 			if args[2] == "classification":
 				#model = performClassification(sample, params)
 				
 				#if(model == "Naive Bayes"):
-					theModel = NaiveBayes.train(datasetTraining)
+					theModel = NaiveBayes.train(zipped_data)#datasetTraining)
+					with open('datapoints.txt', 'a+') as f:
+						for i in range(1,6):
+							f.write("i = " + str(i) + "	")
+							f.write(str(theModel.predict([float(i)])))
+							f.write("\n")
 					test_preds = (datasetTest.map(lambda x: x.label).zip(theModel.predict(datasetTest.map(lambda x: x.features))))
+					predsAndLabels = zipped_data.map(lambda x: (theModel.predict(x.features), x.label))
+					predictions = theModel.predict(datasetTest.map(lambda x: x.features))
+					with open('datapoints.txt', 'a+') as f:
+						f.write("test_preds:	")
+						f.write(str(test_preds.take(10)))
+						f.write('\n\n')
+						f.write("predsAndLabels:	"+str(predsAndLabels.take(10))+"\n\n")
+						f.write(str(datasetTest.take(10)))
+						f.write('\n\n')
+						f.write(str(predictions.take(10)))
 					test_metrics = MulticlassMetrics(test_preds.map(lambda x: (x[0], float(x[1]))))
 					testing_accuracy = test_metrics.precision()
 					with open('results.txt', 'w+') as f:
@@ -282,6 +312,10 @@ def modelSelection(argv):
 
 		elif args[1] == "unsupervised":
 			sample = dataset.sample(False, .3)
+			with open('datapoints.txt', 'w+') as f:
+				f.write("dataset:	" + str(dataset.take(10)))
+				f.write('\n\n')
+
 			if args[2] == "clustering":
 				model = performClustering(sample, params)
 				
