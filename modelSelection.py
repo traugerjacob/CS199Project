@@ -2,14 +2,14 @@
 from pyspark import SparkContext, SparkConf
 import sys
 from pyspark.mllib.classification import NaiveBayes, NaiveBayesModel
-from pyspark.mllib.classification import LogisticRegressionWithSGD, LogisticRegressionModel
+from pyspark.mllib.classification import LogisticRegressionWithSGD
 from pyspark.mllib.tree import RandomForest
 from pyspark.mllib.evaluation import MulticlassMetrics
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
-from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD, LinearRegressionModel, RidgeRegressionModel, LassoModel
+from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD
 from pyspark.mllib.evaluation import RegressionMetrics
-from pyspark.mllib.clustering import KMeans, KMeansModel
-from pyspark.mllib.clustering import GaussianMixture, GaussianMixtureModel
+from pyspark.mllib.clustering import KMeans
+from pyspark.mllib.clustering import GaussianMixture
 from numpy import array
 from math import sqrt
 import json
@@ -17,7 +17,6 @@ import csv
 from pyspark.mllib.regression import LabeledPoint
 conf = SparkConf().setAppName("Model Selection")
 sc = SparkContext(conf = conf)
-
 
 # JSON Parsing
 def jsonCheckParams(row, params):
@@ -62,7 +61,6 @@ def csvFilterAndMap(data, params):
 	data = data.map(lambda x: csvMap(x, params, headerDict))
 	return data
 
-
 # Returns the Naive Bayes model
 def performNaiveBayes(training, test, params):
 	model = NaiveBayes.train(training)
@@ -92,19 +90,6 @@ def performLogisticRegression(training, test, params):
 	evaluator = MulticlassClassificationEvaluator(labelCol="indexedLabel", predictionCol="prediction", metricName="accuracy")
 	testing_accuracy = evaluator.evaluate(test_preds)
 	return testing_accuracy
-
-
-# Returns the best model for the data given the parameters
-def performClassification(data, params):
-	training, test = data.randomSplit([.8, .2])
-	naive_bayes = performNaiveBayes(training, test, params)
-	#random_forest = performRandomForest(training, test, params)
-	# Return the one with the higher testing data accuracy and lower error
-	# Need to check for error too because random forest's error is computed independent of accuracy
-	#naive_bayes_accuracy = naive_bayes
-	#random_forest_accuracy = random_forest
-	logistic = performLogisticRegression(training, test, params)
-	return "logistic" if logistic > naive_bayes else "Naive Bayes"
 
 
 # Returns the Lasso model
@@ -172,7 +157,7 @@ def error(clusters, point):
 
 # Finds the best k-value and its error, if not found, returns k=30 and its error
 def getKValue(arr):
-	diff = .1 * abs(arr[0] - arr[1])
+	diff = .05 * abs(arr[0] - arr[1])
 	for i in range(1,len(arr) - 1):
 		if(abs(arr[i] - arr[i-1]) <= diff):
 			return i+1
@@ -187,14 +172,11 @@ def performClustering(data, params):
 		clusters = KMeans.train(data,k)
 		kmeans_values.append(data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
 		
-		#clusters = GaussianMixture.train(data,k)
-		#guassian_mixture_values.append(100000)#data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
 	# Best k-value is calculated when the error difference of two k-values is 10% of the error difference of k=1 and k=2
 	# This tries to mimic the elbow method, or where the difference between errors is too small
 	bestKMeansK = getKValue(kmeans_values)
-	#bestGaussianK, GaussianMixtureError = getKValue(guassian_mixture_values, 0.1 * abs(guassian_mixture_values[1]-guassian_mixture_values[0]))
 	# Return the model with the least error
-	return ("KMeans", bestKMeansK) #if kMeansError < GaussianMixtureError else ("gaussian", bestGaussianK)
+	return ("KMeans", bestKMeansK) 
 
 
 #Added for pyspark testing
@@ -211,14 +193,6 @@ def printLabels(rdd):
 def printFeatures(rdd):
 	feat = rdd.map(lambda x: x.features)
 	return feat
-
-#TODO delete this method when everything works
-def makeDataset():
-	arr = []
-	for i in range(100):
-		arr.append([i%10,i%10])
-	return arr
-
 # MODEL SELECTION ALGORITHM
 def modelSelection(argv):
 	if len(argv) < 5:
@@ -240,56 +214,28 @@ def modelSelection(argv):
 		elif args[0][-4:] =="json":
 			dataset = jsonFilterAndMap(dataset, params)
 
-		#TODO delete this below too
-		dataset = sc.parallelize(makeDataset())
+		else:
+			print("This program only supports .csv and .json files")
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
 			labels = dataset.map(lambda x: x[0])
 			values = dataset.map(lambda x: x[1:])
 			zipped_data = labels.zip(values).map(lambda x: LabeledPoint(x[0], x[1:])).cache()
 			datasetTraining, datasetTest = zipped_data.randomSplit([.8, .2])
-			sample = zipped_data.sample(False, .3)
-			#TODO delete this write to file when everything is predicting correctly
-			with open('datapoints.txt', 'w+') as f:
-				f.write("zipped_data:	" + str(zipped_data.take(10)))
-				f.write('\n\n')
-				f.write(str(printFeatures(zipped_data).take(10))+"\n")
-				f.write(str(printLabels(zipped_data).take(10)))
-				f.write('\n\n\n')
 			
 			if args[2] == "classification":
-				#model = performClassification(sample, params)
+				theModel = NaiveBayes.train(datasetTraining)
+
+				test_preds = (datasetTest.map(lambda x: x.label).zip(theModel.predict(datasetTest.map(lambda x: x.features))))
+				predictions = theModel.predict(datasetTest.map(lambda x: x.features))
+				test_metrics = MulticlassMetrics(test_preds.map(lambda x: (x[0], float(x[1]))))
+				testing_accuracy = test_metrics.precision()
 				
-				#if(model == "Naive Bayes"):
-					theModel = NaiveBayes.train(zipped_data)#datasetTraining)
-					with open('datapoints.txt', 'a+') as f:
-						for i in range(1,6):
-							f.write("i = " + str(i) + "	")
-							f.write(str(theModel.predict([float(i)])))
-							f.write("\n")
-					test_preds = (datasetTest.map(lambda x: x.label).zip(theModel.predict(datasetTest.map(lambda x: x.features))))
-					predsAndLabels = zipped_data.map(lambda x: (theModel.predict(x.features), x.label))
-					predictions = theModel.predict(datasetTest.map(lambda x: x.features))
-					with open('datapoints.txt', 'a+') as f:
-						f.write("test_preds:	")
-						f.write(str(test_preds.take(10)))
-						f.write('\n\n')
-						f.write("predsAndLabels:	"+str(predsAndLabels.take(10))+"\n\n")
-						f.write(str(datasetTest.take(10)))
-						f.write('\n\n')
-						f.write(str(predictions.take(10)))
-					test_metrics = MulticlassMetrics(test_preds.map(lambda x: (x[0], float(x[1]))))
-					testing_accuracy = test_metrics.precision()
-					with open('results.txt', 'w+') as f:
-						f.write(str(testing_accuracy))
-						f.write(str(test_metrics.confusionMatrix().toArray()))
-					return theModel
+				with open('results.txt', 'w+') as f:
+					f.write("accuracy: " + str(testing_accuracy) + "\n")
+					f.write("confusion matrix:\n" + str(test_metrics.confusionMatrix().toArray()))
+				return theModel
 
-				#else:
-
-				#	theModel = LogisticRegressionWithSGD.train(datasetTraining)#RandomForest.trainClassifier(datasetTraining, numClasses=2, categoricalFeaturesInfo={},
-	                                     #numTrees=10, featureSubsetStrategy="auto",
-	                                     #impurity='gini', maxDepth=4, maxBins=32)
 			elif args[2] == "regression":
 				model = performRegression(sample, params)
 				if(model == "lasso"):
