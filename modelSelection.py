@@ -1,15 +1,11 @@
-#USE THIS COMMAND TO TEST CSV pyspark modelSelection.py hdfs:///shared/amazon_food_reviews.csv supervised regression Score HelpfulnessNumerator
 from pyspark import SparkContext, SparkConf
 import sys
 from pyspark.mllib.classification import NaiveBayes, NaiveBayesModel
-from pyspark.mllib.classification import LogisticRegressionWithSGD
-from pyspark.mllib.tree import RandomForest
 from pyspark.mllib.evaluation import MulticlassMetrics
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 from pyspark.mllib.regression import LinearRegressionWithSGD, RidgeRegressionWithSGD, LassoWithSGD
 from pyspark.mllib.evaluation import RegressionMetrics
 from pyspark.mllib.clustering import KMeans
-from pyspark.mllib.clustering import GaussianMixture
 from numpy import array
 from math import sqrt
 import json
@@ -70,27 +66,6 @@ def performNaiveBayes(training, test, params):
 	return testing_accuracy
 
 
-# Returns the Random Forest model
-def performRandomForest(training, test, params):
-	model = RandomForest.trainClassifier(training, numClasses=2, categoricalFeaturesInfo={},
-	                                     numTrees=10, featureSubsetStrategy="auto",
-	                                     impurity='gini', maxDepth=4, maxBins=32)
-	train_preds = (training.map(lambda x: x.label).zip(model.predict(training.map(lambda x: x.features))))
-	test_preds = (test.map(lambda x: x.label).zip(model.predict(test.map(lambda x: x.features))))
-	# Create evaluator to compute accuracy
-	evaluator = MulticlassClassificationEvaluator(labelCol="indexedLabel", predictionCol="prediction", metricName="accuracy")
-	testing_accuracy = evaluator.evaluate(test_preds)
-	return testing_accuracy
-
-def performLogisticRegression(training, test, params):
-	model = LogisticRegressionWithSGD.train(training)
-	test_preds = test.map(lambda p: (p.label, model.predict(p.features)))
-	
-	# Create evaluator to compute accuracy
-	evaluator = MulticlassClassificationEvaluator(labelCol="indexedLabel", predictionCol="prediction", metricName="accuracy")
-	testing_accuracy = evaluator.evaluate(test_preds)
-	return testing_accuracy
-
 
 # Returns the Lasso model
 def performLasso(training):
@@ -113,7 +88,7 @@ def performLinearRegression(training):
 # Returns the best regression model for the dataset given the parameters
 def performRegression(data, params):
 	training, test = data.randomSplit([.8, .2])
-	# These should return the error values to test against each other to see which model should be chosen
+	
 	lasso = performLasso(training)
 	linReg = performLinearRegression(training)
 	ridgeReg = performRidgeRegression(training)
@@ -130,7 +105,6 @@ def performRegression(data, params):
 	linRegValue = linMetrics.rootMeanSquaredError
 	ridgeRegValue = ridgeMetrics.rootMeanSquaredError
 	
-	# Returns the regression model
 	if(lassoValue < linRegValue and lassoValue < ridgeRegValue):
 		return "lasso"
 	if(linRegValue < lassoValue and linRegValue < ridgeRegValue):
@@ -144,18 +118,14 @@ def performKMeans(data, k):
 	return kmeans
 
 
-# Returns the Guassian Mixture model
-def performGaussianMixture(data, k):
-	gmm = GaussianMixture.train(data, k)
-	return gmm
-
 
 # Gets the error of the model
 def error(clusters, point):
     center = clusters.centers[clusters.predict(point)]
     return sqrt(sum([x**2 for x in (point - center)]))
 
-# Finds the best k-value and its error, if not found, returns k=30 and its error
+# Finds the best k-value and its error, if not found, returns k=30 and its error.
+#Tries to mimic the elbow method for finding the best k value 
 def getKValue(arr):
 	diff = .05 * abs(arr[0] - arr[1])
 	for i in range(1,len(arr) - 1):
@@ -166,38 +136,22 @@ def getKValue(arr):
 # Returns the best clustering model for the dataset given the parameters
 def performClustering(data, params):
 	kmeans_values = []
-	guassian_mixture_values = []
 	# Try k-values from k=1 to k=30
 	for k in range(1,31):
 		clusters = KMeans.train(data,k)
 		kmeans_values.append(data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
 		
-	# Best k-value is calculated when the error difference of two k-values is 10% of the error difference of k=1 and k=2
-	# This tries to mimic the elbow method, or where the difference between errors is too small
 	bestKMeansK = getKValue(kmeans_values)
-	# Return the model with the least error
+	
 	return ("KMeans", bestKMeansK) 
 
 
-#Added for pyspark testing
-def modelSelectionAlternative(path,supervisedOrNot,mlType,parameter,otherParam):
-	modelSelection([path,supervisedOrNot,mlType,parameter,otherParam])
 
-
-#TODO delete this method when everything works
-def printLabels(rdd):
-	labels = rdd.map(lambda x: x.label)
-	return labels
-
-#TODO delete this method when everything works
-def printFeatures(rdd):
-	feat = rdd.map(lambda x: x.features)
-	return feat
 # MODEL SELECTION ALGORITHM
 def modelSelection(argv):
 	if len(argv) < 5:
 		print("The arguments for this script require:\n" +
-				"path/to/filename of the dataset\n" +
+				"(hdfs or file):///path/to/filename of the dataset\n" +
 				"supervised/unsupervised\n" +
 				"classifier/regression/clustering\n" +
 				"parameter trying to be guessed\n" +
@@ -216,6 +170,7 @@ def modelSelection(argv):
 
 		else:
 			print("This program only supports .csv and .json files")
+			return
 		#Model selection algorithm. Currently goes off of scikit learn's cheat sheet
 		if args[1] == "supervised":
 			labels = dataset.map(lambda x: x[0])
@@ -237,6 +192,7 @@ def modelSelection(argv):
 				return theModel
 
 			elif args[2] == "regression":
+				sample = zipped_data.sample(False, .3)
 				model = performRegression(sample, params)
 				if(model == "lasso"):
 					theModel = LassoWithSGD.train(datasetTraining, iterations = 1000, step = 0.001)
