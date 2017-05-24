@@ -10,6 +10,7 @@ from numpy import array
 from math import sqrt
 import json
 import csv
+import numpy
 from pyspark.mllib.regression import LabeledPoint
 conf = SparkConf().setAppName("Model Selection")
 sc = SparkContext(conf = conf)
@@ -24,7 +25,7 @@ def jsonCheckParams(row, params):
 def jsonMap(row, params):
 	t = ()
 	for i in params:
-		t = t + (row.get(i),)
+		t = t + (float(row.get(i)),)
 	return t
 
 def jsonFilterAndMap(data, params):
@@ -44,7 +45,7 @@ def csvCheckParams(row, params, headerDict):
 def csvMap(row, params, headerDict):
 	t = ()
 	for i in params:
-		t = t + (row[headerDict[i]],)
+		t = t + (float(row[headerDict[i]]),)
 	return t
 
 def csvFilterAndMap(data, params):
@@ -69,19 +70,19 @@ def performNaiveBayes(training, test, params):
 
 # Returns the Lasso model
 def performLasso(training):
-	model = LassoWithSGD.train(training, iterations = 100, step = 0.001)
+	model = LassoWithSGD.train(training, iterations = 100, step = 0.001, intercept = True)
 	return model
 
 
 # Returns the Ridge Regression model
 def performRidgeRegression(training):
-	model = RidgeRegressionWithSGD.train(training, iterations = 100, step = 0.001)
+	model = RidgeRegressionWithSGD.train(training, iterations = 100, step = 0.001, intercept = True)
 	return model
 
 
 # Returns the Linear Regression model
 def performLinearRegression(training):
-	model = LinearRegressionWithSGD.train(training, iterations = 100, step = 0.001)
+	model = LinearRegressionWithSGD.train(training, iterations = 100, step = 0.001, intercept = True)
 	return model
 
 
@@ -121,8 +122,13 @@ def performKMeans(data, k):
 
 # Gets the error of the model
 def error(clusters, point):
+
     center = clusters.centers[clusters.predict(point)]
-    return sqrt(sum([x**2 for x in (point - center)]))
+    #center = [float(i) for i in center]
+    #point = [float(i) for i in point]
+   # return sqrt(sum([(a-b)**2 for a, b in zip(point,center)]))
+    
+    return sqrt(sum([x**2 for x in (numpy.asarray(point) - numpy.asarray(center))]))
 
 # Finds the best k-value and its error, if not found, returns k=30 and its error.
 #Tries to mimic the elbow method for finding the best k value 
@@ -138,12 +144,12 @@ def performClustering(data, params):
 	kmeans_values = []
 	# Try k-values from k=1 to k=30
 	for k in range(1,31):
-		clusters = KMeans.train(data,k)
+		clusters = performKMeans(data, k)
 		kmeans_values.append(data.map(lambda point: error(clusters, point)).reduce(lambda x, y: x + y))
 		
 	bestKMeansK = getKValue(kmeans_values)
 	
-	return ("KMeans", bestKMeansK) 
+	return ("KMeans", bestKMeansK)
 
 
 
@@ -151,7 +157,7 @@ def performClustering(data, params):
 def modelSelection(argv):
 	if len(argv) < 5:
 		print("The arguments for this script require:\n" +
-				"(hdfs or file):///path/to/filename of the dataset\n" +
+				"hdfs:///path/to/filename of the dataset\n" +
 				"supervised/unsupervised\n" +
 				"classifier/regression/clustering\n" +
 				"parameter trying to be guessed\n" +
@@ -195,11 +201,11 @@ def modelSelection(argv):
 				sample = zipped_data.sample(False, .3)
 				model = performRegression(sample, params)
 				if(model == "lasso"):
-					theModel = LassoWithSGD.train(datasetTraining, iterations = 1000, step = 0.001)
+					theModel = LassoWithSGD.train(datasetTraining, iterations = 1000, step = 0.001, intercept = True)
 				elif(model == "linear"):
-					theModel = LinearRegressionWithSGD.train(datasetTraining, iterations = 1000, step = 0.001)
+					theModel = LinearRegressionWithSGD.train(datasetTraining, iterations = 1000, step = 0.001, intercept = True)
 				else:
-					theModel = RidgeRegressionWithSGD.train(datasetTraining, iterations = 1000, step = 0.001)
+					theModel = RidgeRegressionWithSGD.train(datasetTraining, iterations = 1000, step = 0.001, intercept = True)
 				test = (datasetTest.map(lambda x: x.label).zip(theModel.predict(datasetTest.map(lambda x: x.features))))
 				metrics = RegressionMetrics(test.map(lambda x: (x[0], float(x[1]))))
 				value = metrics.rootMeanSquaredError
@@ -213,18 +219,10 @@ def modelSelection(argv):
 				return
 
 		elif args[1] == "unsupervised":
-			sample = dataset.sample(False, .3)
-			with open('datapoints.txt', 'w+') as f:
-				f.write("dataset:	" + str(dataset.take(10)))
-				f.write('\n\n')
-
 			if args[2] == "clustering":
+				sample = dataset.sample(False, .3)
 				model = performClustering(sample, params)
-				
-				if(model[0] == "gaussian"):
-					theModel = GuassianMixture.train(dataset, model[1])
-				else:
-					theModel = KMeans.train(dataset, model[1])
+				theModel = performKMeans(dataset, model[-1])
 				with open('results.txt', 'w+') as f:
 					f.write(str(model))
 				return theModel
@@ -232,4 +230,5 @@ def modelSelection(argv):
 				print("Currently this model selection algorithm only supports clustering for unsupervised algorithms")
 				return
 
-modelSelection(sys.argv)
+args = sys.argv
+modelSelection(args).save(sc, "./theModel")
