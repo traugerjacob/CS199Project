@@ -122,12 +122,7 @@ def performKMeans(data, k):
 
 # Gets the error of the model
 def error(clusters, point):
-
     center = clusters.centers[clusters.predict(point)]
-    #center = [float(i) for i in center]
-    #point = [float(i) for i in point]
-   # return sqrt(sum([(a-b)**2 for a, b in zip(point,center)]))
-    
     return sqrt(sum([x**2 for x in (numpy.asarray(point) - numpy.asarray(center))]))
 
 # Finds the best k-value and its error, if not found, returns k=30 and its error.
